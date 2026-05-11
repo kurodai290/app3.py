@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 
-st.set_page_config(page_title="0.8倍サバイバル：脱落ルール", page_icon="🚫")
+st.set_page_config(page_title="0.8倍サバイバル", page_icon="⚖️")
 
 # --- セッション状態の初期化 ---
 if 'game_active' not in st.session_state:
@@ -11,15 +11,17 @@ if 'game_active' not in st.session_state:
         'round': 1,
         'submitted_count': 0,
         'current_inputs': {},
+        'show_results': False, # 結果表示フラグを追加
+        'last_summary': None    # 前回の計算結果を保存
     })
 
 def start_game(names):
-    # 空行を除外してプレイヤーリストを作成
     st.session_state.players = [{"name": name.strip(), "points": 0, "is_active": True} for name in names if name.strip()]
     st.session_state.game_active = True
     st.session_state.round = 1
     st.session_state.current_inputs = {}
     st.session_state.submitted_count = 0
+    st.session_state.show_results = False
 
 # --- メインUI ---
 st.title("⚖️ 0.8倍サバイバル：脱落戦")
@@ -32,57 +34,51 @@ if not st.session_state.game_active:
         st.rerun()
 
 else:
-    # サイドバー：現在のスコアと脱落判定
+    # サイドバー：スコア
     st.sidebar.header("📊 スコアボード")
     for p in st.session_state.players:
         status = "✅ 生存" if p['is_active'] else "💀 脱落"
         color = "white" if p['is_active'] else "red"
         st.sidebar.markdown(f":{color}[{p['name']}: {p['points']} pt ({status})]")
     
-    if st.sidebar.button("ゲームをリセット"):
+    if st.sidebar.button("ゲームを終了"):
         st.session_state.game_active = False
         st.rerun()
 
-    # 生存しているプレイヤーのみを抽出
     active_players = [p for p in st.session_state.players if p['is_active']]
     
     if len(active_players) <= 1:
         st.balloons()
         winner = active_players[0]['name'] if active_players else "なし"
-        st.error(f"🏁 ゲーム終了！ 生き残った勝者は **{winner}** です！")
+        st.error(f"🏁 終焉！ 勝者は **{winner}** です！")
         if st.button("タイトルへ戻る"):
             st.session_state.game_active = False
             st.rerun()
-    else:
+            
+    elif not st.session_state.show_results:
         st.subheader(f"第 {st.session_state.round} ラウンド")
-        
-        # 現在入力すべき「生存プレイヤー」を特定
         current_active_idx = st.session_state.submitted_count
         
         if current_active_idx < len(active_players):
             current_player = active_players[current_active_idx]["name"]
-            
-            with st.form(key=f"input_{st.session_state.round}_{current_player}"):
-                st.write(f"👉 **{current_player}** さんの番です")
-                val = st.number_input("0〜100の整数を入力", 0, 100, step=1)
-                st.caption("※他の人に見られないように！")
+            with st.form(key=f"form_r{st.session_state.round}_{current_player}"):
+                st.write(f"👉 **{current_player}** さんの番")
+                val = st.number_input("0〜100の整数", 0, 100, step=1)
                 if st.form_submit_button("確定"):
                     st.session_state.current_inputs[current_player] = val
                     st.session_state.submitted_count += 1
                     st.rerun()
         else:
-            # 全員の入力完了後の計算
-            if st.button("結果を表示する"):
+            if st.button("結果を計算する"):
+                # 計算ロジック
                 results = st.session_state.current_inputs
                 vals = list(results.values())
                 avg = sum(vals) / len(vals)
                 target = avg * 0.8
-                
                 counts = {v: vals.count(v) for v in set(vals)}
                 summary = []
                 valid_entries = []
 
-                # 1. 被りチェック（-2pt）
                 for name, val in results.items():
                     p_ref = next(p for p in st.session_state.players if p["name"] == name)
                     if counts[val] > 1:
@@ -91,23 +87,17 @@ else:
                     else:
                         valid_entries.append({"name": name, "val": val, "player": p_ref})
                 
-                # 2. 勝者判定
-                winner_name = None
                 if valid_entries:
-                    # 特殊ルール（0と100）
                     has_zero = any(d["val"] == 0 for d in valid_entries)
                     has_hundred = any(d["val"] == 100 for d in valid_entries)
-                    
                     if has_zero and has_hundred:
-                        win_data = [d for d in valid_entries if d["val"] == 100][0]
+                        win_data = min([d for d in valid_entries if d["val"] == 100], key=lambda x: x['name'])
                     elif has_zero:
-                        win_data = [d for d in valid_entries if d["val"] == 0][0]
+                        win_data = min([d for d in valid_entries if d["val"] == 0], key=lambda x: x['name'])
                     else:
                         win_data = min(valid_entries, key=lambda x: abs(x["val"] - target))
                     
                     winner_name = win_data["name"]
-                    
-                    # 3. 敗者チェック（-1pt）
                     for d in valid_entries:
                         if d["name"] == winner_name:
                             summary.append({"名前": d["name"], "数値": d["val"], "判定": "👑 勝利！"})
@@ -115,17 +105,23 @@ else:
                             d["player"]["points"] -= 1
                             summary.append({"名前": d["name"], "数値": d["val"], "判定": "💀 敗北(-1pt)"})
                 
-                # 4. 脱落チェック
                 for p in st.session_state.players:
-                    if p["points"] <= -5:
-                        p["is_active"] = False
-
-                st.divider()
-                st.info(f"平均: {avg:.1f}  →  **ターゲット(×0.8): {target:.2f}**")
-                st.table(pd.DataFrame(summary))
+                    if p["points"] <= -5: p["is_active"] = False
                 
-                if st.button("次のラウンドへ"):
-                    st.session_state.round += 1
-                    st.session_state.submitted_count = 0
-                    st.session_state.current_inputs = {}
-                    st.rerun()
+                st.session_state.last_summary = {"data": summary, "avg": avg, "target": target}
+                st.session_state.show_results = True
+                st.rerun()
+
+    else:
+        # 結果表示画面
+        st.subheader(f"第 {st.session_state.round} ラウンド 結果")
+        s = st.session_state.last_summary
+        st.info(f"平均: {s['avg']:.1f}  →  **ターゲット: {s['target']:.2f}**")
+        st.table(pd.DataFrame(s['data']))
+        
+        if st.button("次のラウンドへ"):
+            st.session_state.round += 1
+            st.session_state.submitted_count = 0
+            st.session_state.current_inputs = {}
+            st.session_state.show_results = False
+            st.rerun()
