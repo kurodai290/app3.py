@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 
-st.set_page_config(page_title="天秤 - 0.8倍の均衡", page_icon="⚖️")
+st.set_page_config(page_title="天秤 - ♦K", page_icon="⚖️")
 
 # --- セッション状態の初期化 ---
 if 'game_active' not in st.session_state:
