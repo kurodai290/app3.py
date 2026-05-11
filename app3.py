@@ -24,7 +24,7 @@ def start_game(names):
     st.session_state.show_results = False
 
 # --- メインUI ---
-st.title("⚖️ 天秤 - 0.8の均衡")
+st.title("⚖️ 天秤 - ♦K")
 
 if not st.session_state.game_active:
     st.subheader("参戦者の登録")
