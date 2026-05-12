@@ -34,7 +34,7 @@ if not st.session_state.game_active:
         st.rerun()
 
 else:
-    # --- スコアボード ---
+    # --- スコアボード (サイドバー) ---
     st.sidebar.header("⚖️ 均衡の秤")
     for p in st.session_state.players:
         if not p['is_active']:
@@ -62,14 +62,31 @@ else:
 
     active_players = [p for p in st.session_state.players if p['is_active']]
     
+    # --- ゲーム終了時の画面 ---
     if len(active_players) <= 1:
         st.balloons()
         winner = active_players[0]['name'] if active_players else "なし"
         st.error(f"🏁 審判終了。最後に残った勝者は **{winner}** です。")
+        
+        # 最終成績の表示
+        st.subheader("📊 最終リザルト")
+        final_results = []
+        for p in st.session_state.players:
+            final_results.append({
+                "状態": "👑 生還" if p['is_active'] else "💀 脱落",
+                "名前": p['name'],
+                "最終ポイント": p['points']
+            })
+        
+        # ポイントが高い順に並べて表示
+        df_final = pd.DataFrame(final_results).sort_values("最終ポイント", ascending=False)
+        st.table(df_final)
+
         if st.button("タイトルへ戻る"):
             st.session_state.game_active = False
             st.rerun()
             
+    # --- 入力・計算フェーズ ---
     elif not st.session_state.show_results:
         st.subheader(f"第 {st.session_state.round} ラウンド")
         current_active_idx = st.session_state.submitted_count
@@ -120,6 +137,7 @@ else:
                             d["player"]["points"] -= 1
                             summary.append({"名前": d["name"], "数値": d["val"], "判定": "💀 敗北 (-1)"})
                 
+                # ポイントが-5以下になったら脱落
                 for p in st.session_state.players:
                     if p["points"] <= -5: p["is_active"] = False
                 
@@ -127,6 +145,7 @@ else:
                 st.session_state.show_results = True
                 st.rerun()
 
+    # --- ラウンド結果表示 ---
     else:
         st.subheader(f"第 {st.session_state.round} ラウンド：判定結果")
         s = st.session_state.last_summary
