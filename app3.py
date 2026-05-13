@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 
-st.set_page_config(page_title="天秤 - ♦K", page_icon="⚖️")
+st.set_page_config(page_title="てんびん - ♦K", page_icon="⚖️")
 
 # --- セッション状態の初期化 ---
 if 'game_active' not in st.session_state:
@@ -24,7 +24,7 @@ def start_game(names):
     st.session_state.show_results = False
 
 # --- メインUI ---
-st.title("⚖️ 天秤 - ♦K")
+st.title("⚖️ てんびん - ♦K")
 
 if not st.session_state.game_active:
     st.subheader("参戦者の登録")
