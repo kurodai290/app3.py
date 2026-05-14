@@ -57,7 +57,10 @@ else:
         st.balloons()
         winner = active_players[0]['name'] if active_players else "なし"
         st.error(f"🏁 審判終了。最後に残った勝者は **{winner}** です。")
-        st.table(pd.DataFrame(st.session_state.players))
+        
+        final_df = pd.DataFrame(st.session_state.players)
+        st.table(final_df[["name", "points", "is_active"]])
+        
         if st.button("タイトルへ戻る"):
             st.session_state.game_active = False
             st.rerun()
@@ -68,14 +71,20 @@ else:
         
         if current_active_idx < len(active_players):
             current_player = active_players[current_active_idx]["name"]
-            st.info(f"⚖️ 思考中: **{current_player}** (他の人に見られないように入力してください)")
-            # keyにラウンドとプレイヤー名を含めてリセットを防ぐ
+            st.info(f"⚖️ 思考中: **{current_player}**\n数字を入力して確定ボタンを押してください。")
+            
             with st.form(key=f"input_form_{st.session_state.round}_{current_player}"):
-                val = st.number_input(f"{current_player} の数値 (0〜100)", 0, 100, step=1, type="password", key=f"num_{st.session_state.round}_{current_player}")
-                if st.form_submit_button("数値を確定"):
-                    st.session_state.current_inputs[current_player] = val
-                    st.session_state.submitted_count += 1
-                    st.rerun()
+                # number_inputではなくtext_inputのpasswordモードを使用
+                val_str = st.text_input(f"{current_player} の数値 (0〜100)", type="password", key=f"pw_{st.session_state.round}_{current_player}")
+                submit = st.form_submit_button("数値を確定")
+                
+                if submit:
+                    if val_str.isdigit() and 0 <= int(val_str) <= 100:
+                        st.session_state.current_inputs[current_player] = int(val_str)
+                        st.session_state.submitted_count += 1
+                        st.rerun()
+                    else:
+                        st.warning("0から100の数字を半角で入力してください。")
         else:
             if st.button("全ての天秤が揃いました"):
                 results = st.session_state.current_inputs
@@ -86,7 +95,6 @@ else:
                 summary = []
                 valid_entries = []
 
-                # 被り判定
                 for name, val in results.items():
                     p_ref = next(p for p in st.session_state.players if p["name"] == name)
                     if counts[val] > 1:
@@ -99,7 +107,6 @@ else:
                     has_zero = any(d["val"] == 0 for d in valid_entries)
                     has_hundred = any(d["val"] == 100 for d in valid_entries)
                     
-                    # 特殊ルール判定
                     # 1. 100 vs 0 (0がいる時に100がいれば100の勝ち)
                     if has_zero and has_hundred:
                         win_data = min([d for d in valid_entries if d["val"] == 100], key=lambda x: x['name'])
@@ -126,9 +133,9 @@ else:
                 st.rerun()
 
     else:
-        st.subheader(f"判定結果")
+        st.subheader(f"第 {st.session_state.round} ラウンド判定結果")
         s = st.session_state.last_summary
-        st.markdown(f"### 🎯 ターゲット: **{s['target']:.2f}** (平均×0.8)")
+        st.markdown(f"### 🎯 ターゲット: **{s['target']:.2f}**")
         st.table(pd.DataFrame(s['data']))
         
         if st.button("次の審判へ"):
