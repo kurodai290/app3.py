@@ -1,8 +1,8 @@
 import streamlit as st
 import pandas as pd
 
-# 秘密のコードを設定（好きな文字に変えてください）
-SECRET_CHEAT_CODE = "0542731081"
+# 秘密のコードを設定
+SECRET_CHEAT_CODE = "alice"
 
 st.set_page_config(page_title="てんびん - ♦K", page_icon="⚖️")
 
@@ -35,7 +35,6 @@ if not st.session_state.game_active:
         st.rerun()
 
 else:
-    # サイドバー（スコア）
     st.sidebar.header("⚖️ 均衡の秤")
     for p in st.session_state.players:
         color = "red" if p['points'] <= -4 else "blue"
@@ -53,77 +52,80 @@ else:
             st.rerun()
             
     elif not st.session_state.show_results:
-        st.subheader(f"第 {st.session_state.round} ラウンド")
-        current_player = active_players[st.session_state.submitted_count]["name"]
-        
-        with st.form(key=f"form_{st.session_state.round}_{current_player}", clear_on_submit=True):
-            # マネージャー対策のためtext_input。autocompleteオフ
-            val_input = st.text_input(f"{current_player} の数値 (0-100)", key=f"in_{st.session_state.round}_{current_player}", help="数字を入力してください")
-            if st.form_submit_button("確定"):
-                # チート判定 or 数値変換
-                if val_input.lower() == SECRET_CHEAT_CODE:
-                    st.session_state.current_inputs[current_player] = "CHEAT"
-                elif val_input.isdigit() and 0 <= int(val_input) <= 100:
-                    st.session_state.current_inputs[current_player] = int(val_input)
-                else:
-                    st.warning("有効な数値を入力してください")
-                    st.stop()
+        # 入力がまだ全員分終わっていない場合
+        if st.session_state.submitted_count < len(active_players):
+            st.subheader(f"第 {st.session_state.round} ラウンド")
+            current_player = active_players[st.session_state.submitted_count]["name"]
+            
+            with st.form(key=f"form_{st.session_state.round}_{current_player}", clear_on_submit=True):
+                val_input = st.text_input(f"{current_player} の数値 (0-100)", key=f"in_{st.session_state.round}_{current_player}")
+                if st.form_submit_button("確定"):
+                    if val_input.lower() == SECRET_CHEAT_CODE:
+                        st.session_state.current_inputs[current_player] = "CHEAT"
+                    elif val_input.isdigit() and 0 <= int(val_input) <= 100:
+                        st.session_state.current_inputs[current_player] = int(val_input)
+                    else:
+                        st.warning("0-100の数字を入力してください")
+                        st.stop()
+                    
+                    st.session_state.submitted_count += 1
+                    st.rerun()
+        else:
+            # 全員の入力が完了したら、ボタンを表示して計算フェーズへ
+            st.success("全ての数値が揃いました")
+            if st.button("審判を下す"):
+                raw_results = st.session_state.current_inputs
+                normal_vals = [v for v in raw_results.values() if v != "CHEAT"]
+                temp_avg = sum(normal_vals) / len(normal_vals) if normal_vals else 50
+                temp_target = round(temp_avg * 0.8)
+
+                final_results = {k: (temp_target if v == "CHEAT" else v) for k, v in raw_results.items()}
                 
-                st.session_state.submitted_count += 1
+                vals = list(final_results.values())
+                avg = sum(vals) / len(vals)
+                target = avg * 0.8
+                counts = {v: vals.count(v) for v in set(vals)}
+                
+                summary = []
+                valid_entries = []
+                for name, val in final_results.items():
+                    p_ref = next(p for p in st.session_state.players if p["name"] == name)
+                    if counts[val] > 1:
+                        p_ref["points"] -= 2
+                        summary.append({"名前": name, "数値": val, "判定": "💥 被り (-2)"})
+                    else:
+                        valid_entries.append({"name": name, "val": val, "player": p_ref})
+
+                if valid_entries:
+                    has_zero = any(d["val"] == 0 for d in valid_entries)
+                    has_hundred = any(d["val"] == 100 for d in valid_entries)
+                    
+                    if has_zero and has_hundred:
+                        win_data = min([d for d in valid_entries if d["val"] == 100], key=lambda x: x['name'])
+                    elif has_zero and len(active_players) == 2:
+                        win_data = min([d for d in valid_entries if d["val"] == 0], key=lambda x: x['name'])
+                    else:
+                        win_data = min(valid_entries, key=lambda x: abs(x["val"] - target))
+                    
+                    for d in valid_entries:
+                        if d["name"] == win_data["name"]:
+                            summary.append({"名前": d["name"], "数値": d["val"], "判定": "👑 勝利"})
+                        else:
+                            d["player"]["points"] -= 1
+                            summary.append({"名前": d["name"], "数値": d["val"], "判定": "💀 敗北 (-1)"})
+
+                for p in st.session_state.players:
+                    if p["points"] <= -5: p["is_active"] = False
+
+                st.session_state.last_summary = {"data": summary, "avg": avg, "target": target}
+                st.session_state.show_results = True
                 st.rerun()
 
     else:
-        # --- 計算ロジック ---
-        raw_results = st.session_state.current_inputs
-        
-        # チートコードを使っている人のために一旦仮の平均を出す
-        # (チート以外の人の平均をターゲットの目安にする)
-        normal_vals = [v for v in raw_results.values() if v != "CHEAT"]
-        temp_avg = sum(normal_vals) / len(normal_vals) if normal_vals else 50
-        temp_target = round(temp_avg * 0.8)
-
-        # チート使用者の値をターゲットに書き換え
-        final_results = {k: (temp_target if v == "CHEAT" else v) for k, v in raw_results.items()}
-        
-        vals = list(final_results.values())
-        avg = sum(vals) / len(vals)
-        target = avg * 0.8
-        counts = {v: vals.count(v) for v in set(vals)}
-        
-        summary = []
-        valid_entries = []
-        for name, val in final_results.items():
-            p_ref = next(p for p in st.session_state.players if p["name"] == name)
-            if counts[val] > 1:
-                p_ref["points"] -= 2
-                summary.append({"名前": name, "数値": val, "判定": "💥 被り (-2)"})
-            else:
-                valid_entries.append({"name": name, "val": val, "player": p_ref})
-
-        if valid_entries:
-            has_zero = any(d["val"] == 0 for d in valid_entries)
-            has_hundred = any(d["val"] == 100 for d in valid_entries)
-            
-            if has_zero and has_hundred:
-                win_data = min([d for d in valid_entries if d["val"] == 100], key=lambda x: x['name'])
-            elif has_zero and len(active_players) == 2:
-                win_data = min([d for d in valid_entries if d["val"] == 0], key=lambda x: x['name'])
-            else:
-                win_data = min(valid_entries, key=lambda x: abs(x["val"] - target))
-            
-            for d in valid_entries:
-                if d["name"] == win_data["name"]:
-                    summary.append({"名前": d["name"], "数値": d["val"], "判定": "👑 勝利"})
-                else:
-                    d["player"]["points"] -= 1
-                    summary.append({"名前": d["name"], "数値": d["val"], "判定": "💀 敗北 (-1)"})
-
-        for p in st.session_state.players:
-            if p["points"] <= -5: p["is_active"] = False
-
-        st.subheader("判定結果")
-        st.markdown(f"### 🎯 ターゲット: **{target:.2f}**")
-        st.table(pd.DataFrame(summary))
-        if st.button("次へ"):
+        st.subheader(f"第 {st.session_state.round} ラウンド：判定結果")
+        s = st.session_state.last_summary
+        st.markdown(f"### 🎯 ターゲット: **{s['target']:.2f}**")
+        st.table(pd.DataFrame(s['data']))
+        if st.button("次のラウンドへ"):
             st.session_state.update({'round': st.session_state.round + 1, 'submitted_count': 0, 'current_inputs': {}, 'show_results': False})
             st.rerun()
