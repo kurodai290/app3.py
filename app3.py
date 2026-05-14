@@ -3,9 +3,8 @@ import pandas as pd
 
 # 秘密のコードを設定
 SECRET_CHEAT_CODE = "alice"
-MAGAO_CODE = "1963"
 
-st.set_page_config(page_title="てんびん - ♦K (Custom)", page_icon="⚖️")
+st.set_page_config(page_title="てんびん - ♦K", page_icon="⚖️")
 
 if 'game_active' not in st.session_state:
     st.session_state.update({
@@ -30,10 +29,11 @@ st.title("⚖️ てんびん - ♦K")
 
 if not st.session_state.game_active:
     st.subheader("参戦者の登録")
-    player_names = st.text_area("参戦者の名前を改行して入力してください", "magao\nプレイヤー2\nプレイヤー3")
+    player_names = st.text_area("参戦者の名前を改行して入力してください", "プレイヤー1\nプレイヤー2\nプレイヤー3")
     if st.button("均衡を開始する"):
         start_game(player_names.split('\n'))
         st.rerun()
+
 else:
     st.sidebar.header("⚖️ 均衡の秤")
     for p in st.session_state.players:
@@ -42,7 +42,7 @@ else:
         st.sidebar.markdown(f"### :{color if p['is_active'] else 'gray'}[{p['name']}]\n**{p['points']} pt** ({status})")
 
     active_players = [p for p in st.session_state.players if p['is_active']]
-
+    
     if len(active_players) <= 1:
         st.balloons()
         winner = active_players[0]['name'] if active_players else "なし"
@@ -50,27 +50,18 @@ else:
         if st.button("タイトルへ"):
             st.session_state.game_active = False
             st.rerun()
-
+            
     elif not st.session_state.show_results:
+        # 入力がまだ全員分終わっていない場合
         if st.session_state.submitted_count < len(active_players):
             st.subheader(f"第 {st.session_state.round} ラウンド")
             current_player = active_players[st.session_state.submitted_count]["name"]
             
             with st.form(key=f"form_{st.session_state.round}_{current_player}", clear_on_submit=True):
-                # 入力を見えないように type="password" にすることも可能
                 val_input = st.text_input(f"{current_player} の数値 (0-100)", key=f"in_{st.session_state.round}_{current_player}")
-                
                 if st.form_submit_button("確定"):
-                    # --- 特殊コマンド: magao & 1963 ---
-                    if current_player == "magao" and val_input == MAGAO_CODE:
-                        st.session_state.current_inputs = {p["name"]: 4545 for p in active_players}
-                        st.session_state.submitted_count = len(active_players)
-                        st.rerun()
-                    
-                    # --- 通常のチートコード ---
                     if val_input.lower() == SECRET_CHEAT_CODE:
                         st.session_state.current_inputs[current_player] = "CHEAT"
-                    # --- 通常入力 ---
                     elif val_input.isdigit() and 0 <= int(val_input) <= 100:
                         st.session_state.current_inputs[current_player] = int(val_input)
                     else:
@@ -80,16 +71,14 @@ else:
                     st.session_state.submitted_count += 1
                     st.rerun()
         else:
+            # 全員の入力が完了したら、ボタンを表示して計算フェーズへ
             st.success("全ての数値が揃いました")
             if st.button("審判を下す"):
                 raw_results = st.session_state.current_inputs
-                
-                # 数値のみを抽出（CHEATは除外して計算用）
-                normal_vals = [v for v in raw_results.values() if isinstance(v, int)]
+                normal_vals = [v for v in raw_results.values() if v != "CHEAT"]
                 temp_avg = sum(normal_vals) / len(normal_vals) if normal_vals else 50
                 temp_target = round(temp_avg * 0.8)
-                
-                # CHEATをターゲット値に変換
+
                 final_results = {k: (temp_target if v == "CHEAT" else v) for k, v in raw_results.items()}
                 
                 vals = list(final_results.values())
@@ -99,7 +88,6 @@ else:
                 
                 summary = []
                 valid_entries = []
-                
                 for name, val in final_results.items():
                     p_ref = next(p for p in st.session_state.players if p["name"] == name)
                     if counts[val] > 1:
@@ -127,9 +115,8 @@ else:
                             summary.append({"名前": d["name"], "数値": d["val"], "判定": "💀 敗北 (-1)"})
 
                 for p in st.session_state.players:
-                    if p["points"] <= -5:
-                        p["is_active"] = False
-                
+                    if p["points"] <= -5: p["is_active"] = False
+
                 st.session_state.last_summary = {"data": summary, "avg": avg, "target": target}
                 st.session_state.show_results = True
                 st.rerun()
@@ -140,10 +127,5 @@ else:
         st.markdown(f"### 🎯 ターゲット: **{s['target']:.2f}**")
         st.table(pd.DataFrame(s['data']))
         if st.button("次のラウンドへ"):
-            st.session_state.update({
-                'round': st.session_state.round + 1,
-                'submitted_count': 0,
-                'current_inputs': {},
-                'show_results': False
-            })
+            st.session_state.update({'round': st.session_state.round + 1, 'submitted_count': 0, 'current_inputs': {}, 'show_results': False})
             st.rerun()
